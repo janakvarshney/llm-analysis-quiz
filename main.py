@@ -7,18 +7,12 @@ import io
 import re
 import time
 
-# -------------------------------
-# ⬇️ Playwright SYNC (Windows safe)
-# -------------------------------
 from playwright.sync_api import sync_playwright
 
 
-SECRET = "janak-llm-quiz-2025-x19!a"   # <<< USE YOUR SECRET HERE
+SECRET = "janak-llm-quiz-2025-x19!a" 
 
 
-# =========================================================
-# MODELS
-# =========================================================
 class QuizPayload(BaseModel):
     email: str
     secret: str
@@ -27,10 +21,6 @@ class QuizPayload(BaseModel):
 
 app = FastAPI()
 
-
-# =========================================================
-# BROWSER (SYNC) — Fixed version for Windows + Python 3.12
-# =========================================================
 def render_page_sync(url: str) -> str:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -41,9 +31,8 @@ def render_page_sync(url: str) -> str:
         return html
 
 
-# =========================================================
+
 # UTILITIES
-# =========================================================
 def download_file(url: str) -> bytes:
     with httpx.Client(timeout=60) as client:
         resp = client.get(url)
@@ -71,12 +60,9 @@ def extract_sum_from_pdf(pdf_bytes: bytes, page_index=1) -> float:
         return float(df[value_col].sum())
 
 
-# =========================================================
-# SOLVING A SINGLE QUIZ URL
-# =========================================================
 def solve_one(email, secret, url):
     print(f"\n==============================")
-    print(f"🟩 Solving Quiz: {url}")
+    print(f"Solving Quiz: {url}")
     print("==============================")
 
     html = render_page_sync(url)
@@ -84,50 +70,43 @@ def solve_one(email, secret, url):
     # 1. Find submit URL
     submit_url_match = re.search(r"Post your answer to\s+(https?://\S+)", html)
     if not submit_url_match:
-        print("❌ Error: submit URL not found in page")
+        print("Error: submit URL not found in page")
         return None
     submit_url = submit_url_match.group(1)
 
     # 2. Identify PDF
-    pdf_url_match = re.search(r'href="(https?://[^"]+\.pdf)"', html, flags=re.IGNORECASE)
+    pdf_url_match = re.search(
+        r'href="(https?://[^"]+\.pdf)"', html, flags=re.IGNORECASE
+    )
 
     answer = None
 
     if pdf_url_match:
         pdf_url = pdf_url_match.group(1)
-        print(f"📄 Downloading PDF: {pdf_url}")
+        print(f"Downloading PDF: {pdf_url}")
 
         pdf_bytes = download_file(pdf_url)
         answer = extract_sum_from_pdf(pdf_bytes, page_index=1)
 
-        print(f"🧮 Computed Answer = {answer}")
+        print(f"Computed Answer = {answer}")
 
     else:
-        print("❌ No PDF handler matched yet")
+        print("No PDF handler matched yet")
         return None
 
-    payload = {
-        "email": email,
-        "secret": secret,
-        "url": url,
-        "answer": answer
-    }
+    payload = {"email": email, "secret": secret, "url": url, "answer": answer}
 
-    print("📤 Submitting answer...")
+    print("Submitting answer...")
 
     with httpx.Client(timeout=60) as client:
         resp = client.post(submit_url, json=payload)
         resp.raise_for_status()
         data = resp.json()
 
-    print("🟢 Response:", data)
+    print("Response:", data)
 
-    return data.get("url")   # Next quiz URL or None
+    return data.get("url") 
 
-
-# =========================================================
-# HANDLES MULTI-STEP QUIZ CHAIN
-# =========================================================
 def solve_quiz_chain(email, secret, start_url, limit_seconds=180):
     t0 = time.time()
     url = start_url
@@ -135,18 +114,15 @@ def solve_quiz_chain(email, secret, start_url, limit_seconds=180):
     while url and time.time() - t0 < limit_seconds:
         url = solve_one(email, secret, url)
 
-    print("\n🏁 Quiz processing finished.\n")
+    print("\nQuiz processing finished.\n")
 
 
-# =========================================================
-# FASTAPI ENDPOINT
-# =========================================================
 @app.post("/quiz")
 def quiz_endpoint(request: QuizPayload):
 
     if request.secret != SECRET:
-        raise HTTPException(status_code=403, detail="Secret Key Invalid ❌")
+        raise HTTPException(status_code=403, detail="Secret Key Invalid")
 
     solve_quiz_chain(request.email, request.secret, request.url)
 
-    return {"status": "OK", "message": "Quiz task processed successfully 🚀"}
+    return {"status": "OK", "message": "Quiz task processed successfully"}
